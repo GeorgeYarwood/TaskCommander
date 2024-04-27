@@ -12,8 +12,8 @@
 #include <thread>
 #define MAX_LOADSTRING 100
 
-#define KILL 0
-#define FORCE_KILL 1
+#define KILL 1
+#define FORCE_KILL 2
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
@@ -58,7 +58,7 @@ HTREEITEM AddItemToTree(HWND hwndTV, LPTSTR lpszItem, int nLevel)
 	// data area. 
 	tvi.lParam = (LPARAM)nLevel;
 	tvins.item = tvi;
-	tvins.hInsertAfter = hPrev;
+	tvins.hInsertAfter = TVI_SORT;
 
 	// Set the parent item based on the specified level. 
 	if (nLevel == 1)
@@ -134,16 +134,16 @@ void AddProcessToTree(DWORD processID)
 		HMODULE hMod;
 		DWORD cbNeeded;
 
-		if (EnumProcessModules(hProcess, &hMod, sizeof(hMod), &cbNeeded))
+		if (EnumProcessModulesEx(hProcess, &hMod, sizeof(hMod), &cbNeeded, LIST_MODULES_ALL))
 		{
 			GetModuleBaseName(hProcess, hMod, szProcessName, sizeof(szProcessName) / sizeof(TCHAR));
+			wchar_t buf[512];
+			swprintf_s(buf, L"%s %d", szProcessName, processID);
+			LPWSTR str = LPWSTR(buf);
+			HTREEITEM newItem = AddItemToTree(t_hWnd, str, 0);
+			processMap.emplace(newItem, processID);
 		}
 
-		wchar_t buf[512];
-		swprintf_s(buf, L"%s %d", szProcessName, processID);
-		LPWSTR str = LPWSTR(buf);
-		HTREEITEM newItem = AddItemToTree(t_hWnd, str, 0);
-		processMap.emplace(newItem, processID);
 		CloseHandle(hProcess);
 	}
 }
@@ -243,7 +243,6 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 	HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_TASKCOMMANDER));
 	MSG msg;
 
-
 	running = true;
 
 	std::thread updateThread = std::thread(UpdateLoop);
@@ -332,6 +331,11 @@ BOOL TerminateProcess(int mode, DWORD pid)
 
 void OnSelectItem(int item)
 {
+	if (item == 0) 
+	{
+		//No selection made
+		return;
+	}
 	HTREEITEM sel = TreeView_GetSelection(t_hWnd);
 
 	if (!sel)

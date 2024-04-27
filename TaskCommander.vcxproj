@@ -143,6 +143,7 @@
     <ResourceCompile Include="TaskCommander.rc" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="icon1.ico" />
     <Image Include="small.ico" />
     <Image Include="TaskCommander.ico" />
   </ItemGroup>
