@@ -8,6 +8,7 @@ Current features:
 - Option to either kill tasks traditional way or to force kill them)
 
 To implement:
+- Group PIDs under one root object that can be killed
 - Search
 - Collumns
 - Alphabetical ordering
