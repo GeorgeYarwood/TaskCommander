@@ -11,5 +11,4 @@ To implement:
 - Group PIDs under one root object that can be killed
 - Search
 - Collumns
-- Alphabetical ordering
 - Split functionality into classes
