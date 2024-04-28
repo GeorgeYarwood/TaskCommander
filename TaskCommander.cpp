@@ -9,7 +9,10 @@
 #include <map>
 #include <shellapi.h>
 #include <chrono>
+#include <tlhelp32.h>
 #include <thread>
+#include <vector>
+#include <shlwapi.h>
 #define MAX_LOADSTRING 100
 
 #define KILL 1
@@ -31,15 +34,41 @@ HWND t_hWnd;
 
 bool running = false;
 
-std::map<HTREEITEM, DWORD> processMap;
+//std::map<HTREEITEM, DWORD> processMap;
+std::vector<class ProcessInfo*> processVec;
 
-HTREEITEM AddItemToTree(HWND hwndTV, LPTSTR lpszItem, int nLevel)
+class ProcessInfo
+{
+public:
+	DWORD pid;
+	DWORD parentPid;
+	DWORD currThreads;
+	DWORD currUsage;
+	WCHAR* name;
+	HTREEITEM item = NULL;
+	bool isRoot = false;
+	bool alreadyHave = false;
+	ProcessInfo(DWORD setPid, DWORD setParentPid, DWORD setCurrThreads, DWORD setCurrUsage, WCHAR* setName)
+	{
+		pid = setPid;
+		parentPid = setParentPid;
+		currThreads = setCurrThreads;
+		currUsage = setCurrUsage;
+		name = new WCHAR[260]; //TODO memory leak?
+		StrCpyW(name, setName);
+	}
+
+	~ProcessInfo()
+	{
+		delete []name;
+	}
+};
+
+HTREEITEM AddItemToTree(HWND hwndTV, LPTSTR lpszItem, HTREEITEM parent)
 {
 	TVITEM tvi;
 	TVINSERTSTRUCT tvins;
 	static HTREEITEM hPrev = (HTREEITEM)TVI_FIRST;
-	static HTREEITEM hPrevRootItem = NULL;
-	static HTREEITEM hPrevLev2Item = NULL;
 	HTREEITEM hti;
 
 	tvi.mask = TVIF_TEXT | TVIF_IMAGE
@@ -56,34 +85,28 @@ HTREEITEM AddItemToTree(HWND hwndTV, LPTSTR lpszItem, int nLevel)
 
 	// Save the heading level in the item's application-defined 
 	// data area. 
-	tvi.lParam = (LPARAM)nLevel;
+	tvi.lParam = (LPARAM)parent == NULL ? 0 : 1;
 	tvins.item = tvi;
 	tvins.hInsertAfter = TVI_SORT;
 
 	// Set the parent item based on the specified level. 
-	if (nLevel == 1)
+	if (parent == NULL)
 		tvins.hParent = TVI_ROOT;
-	else if (nLevel == 2)
-		tvins.hParent = hPrevRootItem;
 	else
-		tvins.hParent = hPrevLev2Item;
+		tvins.hParent = parent;
 
 	// Add the item to the tree-view control. 
 	hPrev = (HTREEITEM)SendMessage(hwndTV, TVM_INSERTITEM,
 		0, (LPARAM)(LPTVINSERTSTRUCT)&tvins);
 
-	if (hPrev == NULL)
+	if(hPrev == NULL)
+	{
 		return NULL;
-
-	// Save the handle to the item. 
-	if (nLevel == 1)
-		hPrevRootItem = hPrev;
-	else if (nLevel == 2)
-		hPrevLev2Item = hPrev;
-
+	}
+		
 	// The new item is a child item. Give the parent item a 
 	// closed folder bitmap to indicate it now has child items. 
-	if (nLevel > 1)
+	if (parent != NULL)
 	{
 		hti = TreeView_GetParent(hwndTV, hPrev);
 		tvi.mask = TVIF_IMAGE | TVIF_SELECTEDIMAGE;
@@ -123,41 +146,41 @@ HWND CreateTreeView(HWND hwndParent)
 	return hwndTV;
 }
 
-void AddProcessToTree(DWORD processID)
+void AddProcessToTree(ProcessInfo* pInfo, HTREEITEM parent)
 {
-	TCHAR szProcessName[MAX_PATH] = TEXT("<unknown>");
+	wchar_t buf[512];
+	swprintf_s(buf, L"%s %d", pInfo->name, pInfo->pid);
 
-	HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, processID);
-
-	if (NULL != hProcess)
+	LPWSTR str = LPWSTR(buf);
+	HTREEITEM newItem = AddItemToTree(t_hWnd, str, parent);
+	if (newItem != NULL)
 	{
-		HMODULE hMod;
-		DWORD cbNeeded;
-
-		if (EnumProcessModulesEx(hProcess, &hMod, sizeof(hMod), &cbNeeded, LIST_MODULES_ALL))
-		{
-			GetModuleBaseName(hProcess, hMod, szProcessName, sizeof(szProcessName) / sizeof(TCHAR));
-			wchar_t buf[512];
-			swprintf_s(buf, L"%s %d", szProcessName, processID);
-			LPWSTR str = LPWSTR(buf);
-			HTREEITEM newItem = AddItemToTree(t_hWnd, str, 0);
-			processMap.emplace(newItem, processID);
-		}
-
-		CloseHandle(hProcess);
+		pInfo->item = newItem;
+		processVec.emplace_back(pInfo);
 	}
 }
 
-void GetAllProcesses(DWORD* allProcesses, DWORD& pCount, int bufSize)
+std::vector<ProcessInfo*> GetAllProcesses()
 {
-	DWORD cbNeeded;
+	std::vector<ProcessInfo*> vec;
+	HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+	PROCESSENTRY32* processInfo = new PROCESSENTRY32;
+	processInfo->dwSize = sizeof(PROCESSENTRY32);
 
-	if (!EnumProcesses(allProcesses, bufSize, &cbNeeded))
+	while (Process32Next(hSnapshot, processInfo))
 	{
-		return;
+		if (processInfo->th32ProcessID == 0)
+		{
+			continue;
+		}
+
+		ProcessInfo* newInfo = new ProcessInfo(processInfo->th32ProcessID, processInfo->th32ParentProcessID, processInfo->cntThreads, processInfo->cntUsage, processInfo->szExeFile);
+		vec.emplace_back(newInfo);
 	}
 
-	pCount = cbNeeded / sizeof(DWORD);
+	delete processInfo;
+	CloseHandle(hSnapshot);
+	return vec;
 }
 
 void UpdateLoop()
@@ -170,57 +193,114 @@ void UpdateLoop()
 		//If this process needs to be added, add it 
 		//If this process is no longer in the new list, remove it
 
-		DWORD allProcesses[2048], pCount;
-		GetAllProcesses(allProcesses, pCount, 2048);
+		std::vector<ProcessInfo*> newProcesses = GetAllProcesses();
 
-		std::map<HTREEITEM, DWORD>::const_iterator it;
-		for (it = processMap.begin(); it != processMap.end(); ++it)
+		//Do root processes first, then loop through children matching them to their parents
+
+
+		//Check existing list against new snapshot
+
+		for (int i = 0; i < processVec.size(); i++)
 		{
-			DWORD pid = it->second;
+			DWORD pid = processVec[i]->pid;
 			bool alreadyHave = false;
-			for (int i = 0; i < pCount; i++)
+			for (int j = 0; j < newProcesses.size(); j++)
 			{
-				if (allProcesses[i] != 0)
+				if (newProcesses[j]->pid == pid) //We have this process already, move to next
 				{
-					if (allProcesses[i] == pid) //We have this process already, move to next
-					{
-						alreadyHave = true;
-						break;
-					}
+					newProcesses[j]->alreadyHave = true; //We already have this in the main vec so delete the copy when we're done
+					alreadyHave = true;
+					break;
 				}
 			}
 
-			if (!alreadyHave) //We don't have this process, remove it
+			if (!alreadyHave) //We don't have this anymore process, remove it
 			{
-				TreeView_DeleteItem(t_hWnd, it->first);
-				processMap.erase(it);
-				it = processMap.begin();
-			}
+				//TODO move this into it's own method
+				
+				ProcessInfo* old = processVec[i];
+
+				//If this process had children, delete the children first
+				for (int j = 0; j < processVec.size(); j++)
+				{
+					if(processVec[j]->parentPid == old->pid)
+					{
+						TreeView_DeleteItem(t_hWnd, processVec[j]->item);
+						ProcessInfo* oldChild = processVec[j];
+						processVec.erase(processVec.begin() + j);
+						delete oldChild;
+						j = 0;
+					}
+				}
+
+				if(processVec[i]->item)
+				{
+					TreeView_DeleteItem(t_hWnd, processVec[i]->item);
+				}
+				processVec.erase(processVec.begin() + i);
+				delete old;
+				i = 0;
+ 			}
 		}
 
-		for (int i = 0; i < pCount; i++)
+		for (int i = 0; i < newProcesses.size(); i++)
 		{
-			if (allProcesses[i] != 0)
+			if (newProcesses[i]->parentPid == 0)
 			{
-				bool dontAdd = false;
-				for (it = processMap.begin(); it != processMap.end(); ++it)
-				{
-					DWORD pid = it->second;
-					if (allProcesses[i] == pid)
-					{
-						dontAdd = true;
-						break;
-					}
-				}
+				newProcesses[i]->isRoot = true;
+				continue;
+			}
 
-				if (!dontAdd) //This process isn't in the old tree, we need to add it
+			for (int j = 0; j < newProcesses.size(); j++)
+			{
+				if (newProcesses[i]->pid == newProcesses[j]->parentPid)
 				{
-					AddProcessToTree(allProcesses[i]);
+					newProcesses[i]->isRoot = true;
+					break;
 				}
 			}
 		}
 
-		std::this_thread::sleep_for(std::chrono::microseconds(2000));
+		//Check new snaphot against existing list
+		for (int i = 0; i < newProcesses.size(); i++)
+		{
+			if (!newProcesses[i]->alreadyHave && newProcesses[i]->isRoot)
+			{
+				AddProcessToTree(newProcesses[i], NULL);
+			}
+		}
+
+		for (int i = 0; i < newProcesses.size(); i++)
+		{
+			if (!newProcesses[i]->alreadyHave && !newProcesses[i]->isRoot)
+			{
+				//Get parent item
+				for (int j = 0; j < processVec.size(); j++)
+				{
+					if (processVec[j]->item != NULL) 
+					{
+						ProcessInfo* childInfo = newProcesses[i];
+						ProcessInfo* parentInfo = processVec[j];
+						DWORD pid = childInfo->pid;
+						if (parentInfo->pid == childInfo->parentPid)
+						{
+							AddProcessToTree(newProcesses[i], processVec[j]->item);
+						}
+					}
+				}
+			}
+		}
+
+		for (int i = 0; i < newProcesses.size(); i++)
+		{
+			if(newProcesses[i]->alreadyHave)
+			{
+				delete newProcesses[i];
+			}
+		}
+
+		newProcesses.clear();
+		std::this_thread::sleep_for(std::chrono::microseconds(50000));
 	}
 }
 
@@ -331,7 +411,7 @@ BOOL TerminateProcess(int mode, DWORD pid)
 
 void OnSelectItem(int item)
 {
-	if (item == 0) 
+	if (item == 0)
 	{
 		//No selection made
 		return;
@@ -343,7 +423,16 @@ void OnSelectItem(int item)
 		return;
 	}
 
-	DWORD pid = processMap[sel];
+	DWORD pid = NULL;
+
+	for(int i = 0; i < processVec.size(); i++)
+	{
+		if(processVec[i]->item == sel)
+		{
+			pid = processVec[i]->pid;
+			break;
+		}
+	}
 
 	if (!pid)
 	{
