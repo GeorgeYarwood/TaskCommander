@@ -253,11 +253,10 @@ void UIManager::UpdateLoop()
 		for (int i = 0; i < pMan->processVec.size(); i++)
 		{
 			ProcessInfo* current = pMan->processVec.at(i);
-			DWORD pid = current->pid;
 			bool alreadyHave = false;
 			for (int j = 0; j < newProcesses.size(); j++)
 			{
-				if (newProcesses[j]->pid == pid) //We have this process already, move to next
+				if (newProcesses[j]->pid == current->pid) //We have this process already, move to next
 				{
 					newProcesses[j]->alreadyHave = true; //We already have this in the main vec so delete the copy when we're done
 					alreadyHave = true;
@@ -297,7 +296,6 @@ void UIManager::UpdateLoop()
 
 			for (int j = 0; j < newProcesses.size(); j++)
 			{
-				//We haven't set it's parent ProcessInfo yet, so we must rely on the Pid for this intervention
 				if (newProcesses[i]->pid == newProcesses[j]->parentPid)
 				{
 					newProcesses[i]->isRoot = true;
@@ -309,7 +307,7 @@ void UIManager::UpdateLoop()
 		//Check new snapshot against existing list
 		for (int i = 0; i < newProcesses.size(); i++)
 		{
-			if (!newProcesses[i]->alreadyHave && (newProcesses[i]->isRoot || ForceRoot(newProcesses[i])))
+			if (!newProcesses[i]->alreadyHave && (newProcesses[i]->isRoot || ForceRoot(newProcesses[i]))) 
 			{
 				AddProcessToTree(newProcesses[i], NULL);
 				newProcesses[i]->isRoot = true;
@@ -337,9 +335,11 @@ void UIManager::UpdateLoop()
 			}
 		}
 
+
+		//Delete any processes we didn't end up adding to the list
 		for (int i = 0; i < newProcesses.size(); i++)
 		{
-			if (newProcesses[i]->alreadyHave)
+			if (newProcesses[i]->item == NULL)
 			{
 				delete newProcesses[i];
 			}
@@ -352,6 +352,8 @@ void UIManager::UpdateLoop()
 
 bool UIManager::ForceRoot(ProcessInfo* pInfo)
 {
+	//We haven't set it's parent ProcessInfo yet, so we must rely on the Pid for this intervention
+
 	if (!pInfo)
 	{
 		return false;

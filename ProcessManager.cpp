@@ -68,8 +68,8 @@ void ProcessManager::UnregisterProcess(ProcessInfo* pInfo)
 	{
 		if (pInfo == processVec.at(p))
 		{
-			processVec.erase(processVec.begin() + p);
 			delete pInfo;
+			processVec.erase(processVec.begin() + p);
 			return;
 		}
 	}

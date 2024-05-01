@@ -7,7 +7,7 @@ ProcessInfo::ProcessInfo(DWORD setPid, DWORD setParentPid, DWORD setCurrThreads,
 	parentPid = setParentPid;
 	currThreads = setCurrThreads;
 	currUsage = setCurrUsage;
-	name = new WCHAR[MAX_PATH]; //TODO memory leak?
+	name = new WCHAR[MAX_PATH];
 	StrCpyW(name, setName);
 }
 
