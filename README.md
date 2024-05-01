@@ -12,3 +12,4 @@ To implement:
 - Search
 - Multi-select kill
 - Improved UI
+- Display more info
