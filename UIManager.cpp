@@ -433,19 +433,39 @@ void UIManager::UpdateLoop()
 
 			if ((!alreadyHave || !match)) //We don't have this anymore process, remove it
 			{
-				//If this process had children, delete the children first
+				bool childIsMatch = false;
 				for (int j = 0; j < pMan->processVec.size(); j++)
 				{
-					ProcessInfo* child = pMan->processVec.at(j);
-					if (current->item != NULL && child->parentItem != NULL && child->parentItem == current->item)
+					if (pMan->processVec[j] == current)
 					{
-						RemoveProcess(pMan->processVec[j]);
-						j = 0;
+						continue;
+					}
+
+					//If this process doesn't match the search term, but it has a child process that does,
+					//keep it so we don't remove the matching process
+					if (pMan->processVec[j]->parentPid == current->pid && MatchesSearchTerm(pMan->processVec[j]))
+					{
+						childIsMatch = true;
+						break;
 					}
 				}
 
-				RemoveProcess(current);
-				i = 0;
+				if (!childIsMatch) 
+				{
+					//If this process had children, delete the children first
+					for (int j = 0; j < pMan->processVec.size(); j++)
+					{
+						ProcessInfo* child = pMan->processVec.at(j);
+						if (current->item != NULL && child->parentItem != NULL && child->parentItem == current->item)
+						{
+							RemoveProcess(pMan->processVec[j]);
+							j = 0;
+						}
+					}
+
+					RemoveProcess(current);
+					i = 0;
+				}
 			}
 		}
 
