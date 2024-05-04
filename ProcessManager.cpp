@@ -8,25 +8,43 @@ ProcessManager::ProcessManager()
 {
 }
 
-BOOL ProcessManager::TerminateProcess(HWND hWnd, TERM_MODE mode, DWORD pid)
+BOOL ProcessManager::KillProcess(HWND hWnd, TERM_MODE mode, DWORD pid)
 {
 	switch (mode)
 	{
 	case KILL:
 	{
-		HANDLE hProcess = ::OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
 		if (hProcess)
 		{
-			return ::TerminateProcess(hProcess, 1);
+			TerminateProcess(hProcess, 1);
+			CloseHandle(hProcess);
 		}
 		break;
 	}
 	case FORCE_KILL:
 	{
-		//TODO replace this with programmatic taskkill https://stackoverflow.com/questions/70178895/need-win32-api-c-code-that-is-equivalent-to-taskkill-t-f-pid-xxx
-		wchar_t buf[512];
-		swprintf_s(buf, L"/C taskkill /pid %d /f", pid);
-		ShellExecute(hWnd, L"open", L"cmd", buf, NULL, SW_HIDE);
+		for (int p = 0; p < processVec.size(); p++)
+		{
+			ProcessInfo* pInfo = processVec.at(p);
+			if(pInfo->parentPid == pid)
+			{
+				HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pInfo->pid);
+				if (hProcess)
+				{
+					TerminateProcess(hProcess, 1);
+					CloseHandle(hProcess);
+				}
+			}
+		}
+
+		HANDLE hProcess = OpenProcess(PROCESS_TERMINATE, FALSE, pid);
+		if (hProcess)
+		{
+			TerminateProcess(hProcess, 1);
+			CloseHandle(hProcess);
+		}
+
 		break;
 	}
 	}

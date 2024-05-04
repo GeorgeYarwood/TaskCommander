@@ -6,7 +6,7 @@
 class ProcessManager
 {
 public:
-	BOOL TerminateProcess(HWND hWnd, enum TERM_MODE mode, DWORD pid);
+	BOOL KillProcess(HWND hWnd, enum TERM_MODE mode, DWORD pid);
 	std::vector<ProcessInfo*> GetAllProcesses();
 	void RegisterProcess(ProcessInfo* pInfo);
 	void UnregisterProcess(ProcessInfo* pInfo);

@@ -6,8 +6,15 @@
 #include <chrono>
 #include "resource.h"
 #include <shlwapi.h>
+#include <search.h>
 
 UIManager* UIManager::instance = NULL;
+
+WCHAR searchReq[MAX_PATH];
+bool caseSensitive = false;
+
+HTREEITEM killReq = NULL;
+int killMode = 0;
 
 UIManager::UIManager(HINSTANCE hInstance)
 {
@@ -25,7 +32,6 @@ UIManager::UIManager(HINSTANCE hInstance)
 	}
 }
 
-
 BOOL UIManager::Init(HINSTANCE hInstance)
 {
 	LoadStringW(hInstance, IDS_APP_TITLE, titleText, MAX_LOADSTRING);
@@ -39,12 +45,12 @@ BOOL UIManager::Init(HINSTANCE hInstance)
 	wcex.cbClsExtra = 0;
 	wcex.cbWndExtra = 0;
 	wcex.hInstance = hInstance;
-	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_TASKCOMMANDER));
+	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDM_TASKCOMMANDER));
 	wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
 	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
 	wcex.lpszMenuName = MAKEINTRESOURCEW(IDC_TASKCOMMANDER);
 	wcex.lpszClassName = windowClassName;
-	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
+	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDM_TASKCOMMANDER));
 
 	if (!RegisterClassExW(&wcex))
 	{
@@ -97,25 +103,47 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 {
 	switch (message)
 	{
+
 	case WM_CONTEXTMENU:
 	{
 		int xPos = GET_X_LPARAM(lParam);
 		int yPos = GET_Y_LPARAM(lParam);
 
-		HMENU menu = CreatePopupMenu();
-		AppendMenu(menu, MF_STRING, KILL, instance->TERMINATE_TEXT);
-		AppendMenu(menu, MF_STRING, FORCE_KILL, instance->FORCE_TERMINATE_TEXT);
-		instance->OnSelectItem(TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, xPos, yPos, 0, hWnd, NULL));
+		RECT treeRect;
+
+		TVHITTESTINFO hitInfo = { 0 };
+
+		GetWindowRect(instance->tv_hWnd, &treeRect);
+		hitInfo.pt.x = xPos - treeRect.left;
+		hitInfo.pt.y = yPos - treeRect.top;
+
+		//If we hit an item with rclick, force it as the selection and show the context menu
+		HTREEITEM hitItem = TreeView_HitTest(instance->tv_hWnd, &hitInfo);
+		if (hitItem != NULL)
+		{
+			TreeView_SelectItem(instance->tv_hWnd, hitItem);
+			HMENU menu = CreatePopupMenu();
+			AppendMenu(menu, MF_STRING, KILL, instance->TERMINATE_TEXT);
+			AppendMenu(menu, MF_STRING, FORCE_KILL, instance->FORCE_TERMINATE_TEXT);
+			instance->OnSelectItem(TrackPopupMenu(menu, TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, xPos, yPos, 0, hWnd, NULL));
+		}
+
 		break;
 	}
-
 	case WM_COMMAND:
 	{
+
 		int wmId = LOWORD(wParam);
 		switch (wmId)
 		{
 		case IDM_ABOUT:
-			DialogBox(instance->hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, instance->About);
+			DialogBox(instance->hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, instance->AboutProc);
+			break;
+		case IDM_SEARCH:
+			DialogBox(instance->hInst, MAKEINTRESOURCE(IDD_SEARCHBOX), hWnd, instance->SearchProc);
+			break;
+		case IDM_CLEARSEARCH:
+			instance->ClearSearch();
 			break;
 		case IDM_EXIT:
 			DestroyWindow(hWnd);
@@ -123,6 +151,8 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
+
+
 	}
 	break;
 	case WM_PAINT:
@@ -141,7 +171,7 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 	return 0;
 }
 
-INT_PTR UIManager::About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+INT_PTR UIManager::AboutProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	UNREFERENCED_PARAMETER(lParam);
 	switch (message)
@@ -160,6 +190,32 @@ INT_PTR UIManager::About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 	return (INT_PTR)FALSE;
 }
 
+INT_PTR UIManager::SearchProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
+{
+	UNREFERENCED_PARAMETER(lParam);
+	switch (message)
+	{
+	case WM_INITDIALOG:
+		return (INT_PTR)TRUE;
+
+	case WM_COMMAND:
+		if (LOWORD(wParam) == IDC_OK || LOWORD(wParam) == IDOK)
+		{
+			GetDlgItemText(hDlg, IDC_SEARCH, searchReq, MAX_PATH);
+
+			caseSensitive = IsDlgButtonChecked(hDlg, IDC_CASESENS);
+			EndDialog(hDlg, LOWORD(wParam));
+			return (INT_PTR)TRUE;
+		}
+		if (LOWORD(wParam) == IDCANCEL)
+		{
+			EndDialog(hDlg, LOWORD(wParam));
+		}
+		break;
+	}
+	return (INT_PTR)FALSE;
+}
+
 void UIManager::OnSelectItem(int item)
 {
 	if (item == 0)
@@ -167,30 +223,14 @@ void UIManager::OnSelectItem(int item)
 		//No selection made
 		return;
 	}
-	HTREEITEM sel = TreeView_GetSelection(tv_hWnd);
+	killReq = TreeView_GetSelection(tv_hWnd);
+	killMode = item;
+	//if (!sel)
+	//{
+	//	return;
+	//}
 
-	if (!sel)
-	{
-		return;
-	}
-
-	DWORD pid = NULL;
-
-	for (int i = 0; i < pMan->processVec.size(); i++)
-	{
-		if (pMan->processVec[i]->item == sel)
-		{
-			pid = pMan->processVec[i]->pid;
-			break;
-		}
-	}
-
-	if (!pid)
-	{
-		return;
-	}
-
-	pMan->TerminateProcess(hWnd, (TERM_MODE)item, pid);
+	
 }
 
 HTREEITEM UIManager::AddItemToTree(LPTSTR lpszItem, HTREEITEM parent)
@@ -244,33 +284,110 @@ void UIManager::RemoveProcess(ProcessInfo* pInfo)
 	pMan->UnregisterProcess(pInfo);
 }
 
+void UIManager::ClearSearch()
+{
+	memset(searchReq, 0, MAX_PATH);
+}
+
+bool UIManager::MatchesSearchTerm(ProcessInfo* pInfo)
+{
+	WCHAR req[MAX_PATH];
+	StrCpyW(req, searchReq);
+
+	WCHAR pName[MAX_PATH];
+	StrCpyW(pName, pInfo->name);
+
+	if (!caseSensitive)
+	{
+		CharLower(req);
+		CharLower(pName);
+	}
+
+	return !StrNCmp(pName, req, wcslen(req)) || wcslen(req) == 0;
+}
+
 void UIManager::UpdateLoop()
 {
+	//TODO refactor this whole thing
 	while (running)
 	{
-		std::vector<ProcessInfo*> newProcesses = pMan->GetAllProcesses();
-
-		for (int i = 0; i < pMan->processVec.size(); i++)
+		if (killReq != NULL) 
 		{
-			ProcessInfo* current = pMan->processVec.at(i);
-			bool alreadyHave = false;
-			for (int j = 0; j < newProcesses.size(); j++)
+			DWORD pid = NULL;
+
+			for (int i = 0; i < pMan->processVec.size(); i++)
 			{
-				if (newProcesses[j]->pid == current->pid) //We have this process already, move to next
+				if (pMan->processVec[i]->item == killReq)
 				{
-					newProcesses[j]->alreadyHave = true; //We already have this in the main vec so delete the copy when we're done
-					alreadyHave = true;
+					pid = pMan->processVec[i]->pid;
 					break;
 				}
 			}
 
-			if (!alreadyHave) //We don't have this anymore process, remove it
+			if (pid)
+			{
+				pMan->KillProcess(hWnd, (TERM_MODE)killMode, pid);
+			}
+
+			killReq = NULL;
+		}
+
+		std::vector<ProcessInfo*> newProcesses = pMan->GetAllProcesses();
+
+		for (int i = 0; i < newProcesses.size(); i++)
+		{
+			ProcessInfo* pInfo = newProcesses.at(i);
+			if (!MatchesSearchTerm(pInfo))
+			{
+				delete pInfo;
+				newProcesses.erase(newProcesses.begin() + i);
+				i = 0;
+			}
+		}
+
+		for (int i = 0; i < pMan->processVec.size(); i++)
+		{
+
+			ProcessInfo* current = pMan->processVec.at(i);
+
+			//Lazy way of stopping duplicate entries that can happen from search timing issues
+			for (int j = 0; j < pMan->processVec.size(); j++)
+			{
+				if (pMan->processVec[j] == current)
+				{
+					continue;
+				}
+
+				if (pMan->processVec[j]->pid == current->pid)
+				{
+					RemoveProcess(pMan->processVec[j]);
+					j = 0;
+				}
+			}
+
+			bool match = MatchesSearchTerm(current);
+			bool alreadyHave = false;
+
+			if (match)
+			{
+				for (int k = 0; k < newProcesses.size(); k++)
+				{
+					if (newProcesses[k]->pid == current->pid) //We have this process already, move to next
+					{
+						newProcesses[k]->alreadyHave = true; //We already have this in the main vec so delete the copy when we're done
+						alreadyHave = true;
+						break;
+					}
+				}
+			}
+
+			if ((!alreadyHave || !match)) //We don't have this anymore process, remove it
 			{
 				//If this process had children, delete the children first
 				for (int j = 0; j < pMan->processVec.size(); j++)
 				{
 					ProcessInfo* child = pMan->processVec.at(j);
-					if (child->parentItem == current->item)
+					if (current->item != NULL && child->parentItem != NULL && child->parentItem == current->item)
 					{
 						RemoveProcess(pMan->processVec[j]);
 						j = 0;
@@ -280,6 +397,11 @@ void UIManager::UpdateLoop()
 				RemoveProcess(current);
 				i = 0;
 			}
+
+			//if (!current->isRoot && current->parentItem == NULL) //Remove orphaned processes
+			//{
+			//	RemoveProcess(current);
+			//}
 		}
 
 		for (int i = 0; i < newProcesses.size(); i++)
@@ -307,7 +429,7 @@ void UIManager::UpdateLoop()
 		//Check new snapshot against existing list
 		for (int i = 0; i < newProcesses.size(); i++)
 		{
-			if (!newProcesses[i]->alreadyHave && (newProcesses[i]->isRoot || ForceRoot(newProcesses[i]))) 
+			if (!newProcesses[i]->alreadyHave && (newProcesses[i]->isRoot || ForceRoot(newProcesses[i])))
 			{
 				AddProcessToTree(newProcesses[i], NULL);
 				newProcesses[i]->isRoot = true;
@@ -335,7 +457,6 @@ void UIManager::UpdateLoop()
 			}
 		}
 
-
 		//Delete any processes we didn't end up adding to the list
 		for (int i = 0; i < newProcesses.size(); i++)
 		{
@@ -360,7 +481,7 @@ bool UIManager::ForceRoot(ProcessInfo* pInfo)
 	}
 
 	WCHAR name[MAX_PATH];
-	if (!pMan->GetNameFromPid(pInfo->parentPid, name)) 
+	if (!pMan->GetNameFromPid(pInfo->parentPid, name))
 	{
 		return false;
 	}
@@ -392,9 +513,9 @@ void UIManager::AddProcessToTree(ProcessInfo* pInfo, HTREEITEM parent)
 	if (newItem != NULL)
 	{
 		pInfo->item = newItem;
-		pInfo->parentItem = parent;
-		pMan->RegisterProcess(pInfo);
 	}
+	pInfo->parentItem = parent;
+	pMan->RegisterProcess(pInfo);
 }
 
 UIManager::~UIManager()
