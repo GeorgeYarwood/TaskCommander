@@ -18,6 +18,7 @@ public:
 
 	HTREEITEM AddItemToTree(LPTSTR lpszItem, HTREEITEM parent);
 private:
+	bool Exclude(ProcessInfo* pInfo);
 	void UpdateToolbar();
 	void ToggleClearSearchBtn(bool toggle);
 	void UpdatePCount(int count);

@@ -335,6 +335,10 @@ void UIManager::RemoveProcess(ProcessInfo* pInfo)
 void UIManager::ClearSearch()
 {
 	memset(searchReq, 0, MAX_PATH);
+	for (int i = 0; i < pMan->processVec.size(); i++)
+	{
+		TreeView_Expand(tv_hWnd, pMan->processVec[i]->item, TVE_COLLAPSE);
+	}
 }
 
 bool UIManager::MatchesSearchTerm(ProcessInfo* pInfo)
@@ -357,6 +361,7 @@ bool UIManager::MatchesSearchTerm(ProcessInfo* pInfo)
 void UIManager::UpdateLoop()
 {
 	//TODO refactor this whole thing
+	//Need to store parent/children in processInfo instead of this awfullness
 	while (running)
 	{
 		UpdateToolbar();
@@ -434,22 +439,26 @@ void UIManager::UpdateLoop()
 			if ((!alreadyHave || !match)) //We don't have this anymore process, remove it
 			{
 				bool childIsMatch = false;
-				for (int j = 0; j < pMan->processVec.size(); j++)
+				bool parentIsMatch = false;
+				if (!Exclude(current)) //We force processes with these as parent to be root, so we don't need to keep them if a child has it as a PID as we have overridden that
 				{
-					if (pMan->processVec[j] == current)
+					for (int j = 0; j < pMan->processVec.size(); j++)
 					{
-						continue;
-					}
+						if (pMan->processVec[j] == current)
+						{
+							continue;
+						}
 
-					//If this process doesn't match the search term, but it has a child process that does,
-					//keep it so we don't remove the matching process
-					if (pMan->processVec[j]->parentPid == current->pid && MatchesSearchTerm(pMan->processVec[j]))
-					{
-						childIsMatch = true;
-						break;
+						//If this process doesn't match the search term, but it has a child process that does,
+						//keep it so we don't remove the matching process
+						if ((pMan->processVec[j]->parentPid == current->pid || pMan->processVec[j]->pid == current->parentPid) && MatchesSearchTerm(pMan->processVec[j]))
+						{
+							childIsMatch = true;
+							break;
+						}
 					}
 				}
-
+				
 				if (!childIsMatch) 
 				{
 					//If this process had children, delete the children first
@@ -522,6 +531,14 @@ void UIManager::UpdateLoop()
 			}
 		}
 
+		if (wcslen(searchReq) > 0) 
+		{
+			for (int i = 0; i < pMan->processVec.size(); i++)
+			{
+				TreeView_Expand(tv_hWnd, pMan->processVec[i]->item, TVE_EXPAND);
+			}
+		}
+
 		//Delete any processes we didn't end up adding to the list
 		for (int i = 0; i < newProcesses.size(); i++)
 		{
@@ -567,6 +584,15 @@ bool UIManager::ForceRoot(ProcessInfo* pInfo)
 	}*/
 
 	return ret;
+}
+
+bool UIManager::Exclude(ProcessInfo* pInfo) 
+{
+	if (!wcscmp(pInfo->name, L"explorer.exe"))
+	{
+		return true;
+	}
+	return false;
 }
 
 void UIManager::AddProcessToTree(ProcessInfo* pInfo, HTREEITEM parent)
