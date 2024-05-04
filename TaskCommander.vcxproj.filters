@@ -60,24 +60,6 @@
     </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="small.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="TaskCommander.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="icon1.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="icon2.ico">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="ico.png">
-      <Filter>Resource Files</Filter>
-    </Image>
-    <Image Include="tcommander.png">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="tcommander.ico">
       <Filter>Resource Files</Filter>
     </Image>

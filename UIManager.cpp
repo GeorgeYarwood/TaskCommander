@@ -1,5 +1,6 @@
 #include "UIManager.h"
 #include "ProcessManager.h"
+#include "Windows.h"
 #include "Common.h"
 #include <windowsx.h>
 #include <tlhelp32.h>
@@ -72,7 +73,24 @@ BOOL UIManager::Init(HINSTANCE hInstance)
 	ShowWindow(hWnd, 1);
 	UpdateWindow(hWnd);
 
+	toolbar = GetMenu(hWnd);
+
 	return TRUE;
+}
+
+void UIManager::UpdatePCount(int count) 
+{
+	//Display number of running processes on the menu bar
+	wchar_t buf[100];
+	swprintf_s(buf, L"%i processes", count);
+
+	MENUITEMINFO menuitem = { sizeof(MENUITEMINFO) };
+	menuitem.fMask = MIIM_TYPE | MIIM_DATA;
+	GetMenuItemInfo(toolbar, ID_PCOUNT, false, &menuitem);
+	menuitem.dwTypeData = buf;
+	SetMenuItemInfo(toolbar, ID_PCOUNT, false, &menuitem);
+
+	DrawMenuBar(hWnd);
 }
 
 HWND UIManager::CreateTreeView(HWND hwndParent)
@@ -103,7 +121,21 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 {
 	switch (message)
 	{
+	case WM_SIZE:
+	{
+		if (!instance)
+		{
+			break;
+		}
+		//Get root window rect
+		RECT rootRect;
+		GetClientRect(instance->hWnd, &rootRect);
 
+		//Scale treeview control with 
+		SetWindowPos(instance->tv_hWnd, NULL, rootRect.left, rootRect.top, rootRect.right - rootRect.left,
+			rootRect.bottom - rootRect.top, SWP_SHOWWINDOW);
+		break;
+	}
 	case WM_CONTEXTMENU:
 	{
 		int xPos = GET_X_LPARAM(lParam);
@@ -112,7 +144,6 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 		RECT treeRect;
 
 		TVHITTESTINFO hitInfo = { 0 };
-
 		GetWindowRect(instance->tv_hWnd, &treeRect);
 		hitInfo.pt.x = xPos - treeRect.left;
 		hitInfo.pt.y = yPos - treeRect.top;
@@ -132,7 +163,6 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 	}
 	case WM_COMMAND:
 	{
-
 		int wmId = LOWORD(wParam);
 		switch (wmId)
 		{
@@ -199,7 +229,11 @@ INT_PTR UIManager::SearchProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 		return (INT_PTR)TRUE;
 
 	case WM_COMMAND:
-		if (LOWORD(wParam) == IDC_OK || LOWORD(wParam) == IDOK)
+	{
+		switch (LOWORD(wParam))
+		{
+		case IDOK:
+		case IDC_OK:
 		{
 			GetDlgItemText(hDlg, IDC_SEARCH, searchReq, MAX_PATH);
 
@@ -207,11 +241,19 @@ INT_PTR UIManager::SearchProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lPa
 			EndDialog(hDlg, LOWORD(wParam));
 			return (INT_PTR)TRUE;
 		}
-		if (LOWORD(wParam) == IDCANCEL)
+		case IDCANCEL:
 		{
+			//Checkbox and close button have the same ID???
+			if (caseSensitive != IsDlgButtonChecked(hDlg, IDC_CASESENS))
+			{
+				caseSensitive = !caseSensitive;
+				break;
+			}
 			EndDialog(hDlg, LOWORD(wParam));
+			break;
 		}
-		break;
+		}
+	}
 	}
 	return (INT_PTR)FALSE;
 }
@@ -225,12 +267,6 @@ void UIManager::OnSelectItem(int item)
 	}
 	killReq = TreeView_GetSelection(tv_hWnd);
 	killMode = item;
-	//if (!sel)
-	//{
-	//	return;
-	//}
-
-	
 }
 
 HTREEITEM UIManager::AddItemToTree(LPTSTR lpszItem, HTREEITEM parent)
@@ -311,7 +347,7 @@ void UIManager::UpdateLoop()
 	//TODO refactor this whole thing
 	while (running)
 	{
-		if (killReq != NULL) 
+		if (killReq != NULL)
 		{
 			DWORD pid = NULL;
 
@@ -397,11 +433,6 @@ void UIManager::UpdateLoop()
 				RemoveProcess(current);
 				i = 0;
 			}
-
-			//if (!current->isRoot && current->parentItem == NULL) //Remove orphaned processes
-			//{
-			//	RemoveProcess(current);
-			//}
 		}
 
 		for (int i = 0; i < newProcesses.size(); i++)
@@ -467,6 +498,9 @@ void UIManager::UpdateLoop()
 		}
 
 		newProcesses.clear();
+
+		UpdatePCount(pMan->processVec.size());
+
 		std::this_thread::sleep_for(std::chrono::microseconds(50000));
 	}
 }

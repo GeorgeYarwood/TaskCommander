@@ -150,13 +150,7 @@
     <ResourceCompile Include="TaskCommander.rc" />
   </ItemGroup>
   <ItemGroup>
-    <Image Include="ico.png" />
-    <Image Include="icon1.ico" />
-    <Image Include="icon2.ico" />
-    <Image Include="small.ico" />
-    <Image Include="TaskCommander.ico" />
     <Image Include="tcommander.ico" />
-    <Image Include="tcommander.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

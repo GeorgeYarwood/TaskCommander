@@ -18,6 +18,8 @@ public:
 
 	HTREEITEM AddItemToTree(LPTSTR lpszItem, HTREEITEM parent);
 private:
+	void UpdatePCount(int count);
+	HMENU toolbar = NULL;
 	void ClearSearch();
 	bool MatchesSearchTerm(ProcessInfo* pInfo);
 	bool ForceRoot(ProcessInfo* pInfo);
