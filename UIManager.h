@@ -18,6 +18,8 @@ public:
 
 	HTREEITEM AddItemToTree(LPTSTR lpszItem, HTREEITEM parent);
 private:
+	void UpdateToolbar();
+	void ToggleClearSearchBtn(bool toggle);
 	void UpdatePCount(int count);
 	HMENU toolbar = NULL;
 	void ClearSearch();

@@ -86,10 +86,24 @@ void UIManager::UpdatePCount(int count)
 
 	MENUITEMINFO menuitem = { sizeof(MENUITEMINFO) };
 	menuitem.fMask = MIIM_TYPE | MIIM_DATA;
-	GetMenuItemInfo(toolbar, ID_PCOUNT, false, &menuitem);
+	//GetMenuItemInfo(toolbar, ID_PCOUNT, false, &menuitem);
 	menuitem.dwTypeData = buf;
 	SetMenuItemInfo(toolbar, ID_PCOUNT, false, &menuitem);
+}
 
+void UIManager::ToggleClearSearchBtn(bool toggle)
+{
+	MENUITEMINFO menuitem = { sizeof(MENUITEMINFO) };
+	menuitem.fMask = MIIM_STATE;
+	//GetMenuItemInfo(toolbar, ID_CLEARSEACH, false, &menuitem);
+	menuitem.fState = toggle ? MFS_ENABLED : MFS_DISABLED;
+	SetMenuItemInfo(toolbar, IDM_CLEARSEARCH, false, &menuitem);
+}
+
+void UIManager::UpdateToolbar() 
+{
+	UpdatePCount(pMan->processVec.size());
+	ToggleClearSearchBtn(wcslen(searchReq) != 0);
 	DrawMenuBar(hWnd);
 }
 
@@ -181,8 +195,6 @@ LRESULT UIManager::WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam
 		default:
 			return DefWindowProc(hWnd, message, wParam, lParam);
 		}
-
-
 	}
 	break;
 	case WM_PAINT:
@@ -347,6 +359,8 @@ void UIManager::UpdateLoop()
 	//TODO refactor this whole thing
 	while (running)
 	{
+		UpdateToolbar();
+
 		if (killReq != NULL)
 		{
 			DWORD pid = NULL;
@@ -498,8 +512,6 @@ void UIManager::UpdateLoop()
 		}
 
 		newProcesses.clear();
-
-		UpdatePCount(pMan->processVec.size());
 
 		std::this_thread::sleep_for(std::chrono::microseconds(50000));
 	}
