@@ -7,9 +7,9 @@ Current features:
 - Dynamic updating (no flicker)
 - Option to either kill tasks traditional way or to force kill them
 - Group PIDs under one root object that can be killed
+- Search
 
 To implement:
-- Search
 - Multi-select kill
 - Improved UI
 - Display more info
